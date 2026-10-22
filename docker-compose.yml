@@ -1,0 +1,34 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment: { POSTGRES_USER: app, POSTGRES_PASSWORD: app, POSTGRES_DB: generation }
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d generation"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+  alpha:
+    build: .
+    command: ["uvicorn", "app.provider:app", "--host", "0.0.0.0", "--port", "8101"]
+    environment: { PROVIDER_NAME: alpha, CALLBACK_URL: http://api:8000/webhooks/providers/alpha }
+    depends_on: [api]
+  beta:
+    build: .
+    command: ["uvicorn", "app.provider:app", "--host", "0.0.0.0", "--port", "8102"]
+    environment: { PROVIDER_NAME: beta, CALLBACK_URL: http://api:8000/webhooks/providers/beta }
+    depends_on: [api]
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://app:app@db:5432/generation
+      ALPHA_URL: http://alpha:8101
+      BETA_URL: http://beta:8102
+      WEBHOOK_SECRET: local-development-secret
+      PROVIDER_TIMEOUT: 60
+    ports: ["8000:8000"]
+    depends_on:
+      db: { condition: service_healthy }
+    restart: unless-stopped
+volumes:
+  pgdata:
